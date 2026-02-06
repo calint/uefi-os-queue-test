@@ -1,0 +1,15 @@
+[
+  {
+    "file": "src/test1.cpp",
+    "arguments": [
+      "clang++",
+      "-std=c++26",
+      "-O3",
+      "src/test1.cpp",
+      "-o",
+      "test1"
+    ],
+    "directory": "/home/c/w/osca-queue-test",
+    "output": "test1"
+  }
+]
