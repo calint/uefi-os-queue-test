@@ -8,7 +8,6 @@
 // A "Heavy" Job simulation
 struct WorkJob {
     uint64_t payload;
-    std::atomic<uint64_t>* global_counter;
 
     // The job entry point required by osca::is_job
     void run() {
@@ -23,6 +22,7 @@ struct WorkJob {
 void run_stress_test(uint32_t num_consumers, uint32_t total_jobs) {
     osca::Jobs<1024> queue;
     queue.init();
+
     std::atomic<bool> should_terminate{false};
 
     // 1. Start Consumers

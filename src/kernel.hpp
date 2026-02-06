@@ -72,16 +72,3 @@ template <typename T>
 auto inline atomic_store_relaxed(T* target, T val) -> void {
     __atomic_store_n(target, val, __ATOMIC_RELAXED);
 }
-
-auto inline interrupts_enable() -> void { asm volatile("sti"); }
-
-[[noreturn]] auto kernel_start() -> void;
-
-namespace osca {
-
-[[noreturn]] auto start() -> void;
-[[noreturn]] auto run_core(u32 core_index) -> void;
-auto on_keyboard(u8 scancode) -> void;
-auto on_timer() -> void;
-
-} // namespace osca
