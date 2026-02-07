@@ -1,7 +1,7 @@
 #include "osca.hpp"
-#include <atomic>
 #include <chrono>
 #include <iostream>
+#include <stop_token>
 #include <thread>
 #include <vector>
 
@@ -23,17 +23,12 @@ void run_stress_test(uint32_t num_consumers, uint32_t total_jobs) {
     osca::Jobs<1024> queue;
     queue.init();
 
-    std::atomic<bool> should_terminate{false};
-
     // 1. Start Consumers
-    std::vector<std::thread> consumers;
+    std::vector<std::jthread> consumers;
     for (uint32_t i = 0; i < num_consumers; ++i) {
-        consumers.emplace_back([&queue, &should_terminate]() {
-            while (true) {
+        consumers.emplace_back([&queue](std::stop_token stoken) {
+            while (!stoken.stop_requested()) {
                 if (!queue.run_next()) {
-                    if (should_terminate.load(std::memory_order_relaxed)) {
-                        return;
-                    }
                     __builtin_ia32_pause();
                 }
             }
@@ -53,13 +48,9 @@ void run_stress_test(uint32_t num_consumers, uint32_t total_jobs) {
 
     auto end_time = std::chrono::high_resolution_clock::now();
 
-    should_terminate.store(true, std::memory_order_relaxed);
-
     // 4. Join threads to verify termination
     for (auto& t : consumers) {
-        if (t.joinable()) {
-            t.join();
-        }
+        t.request_stop();
     }
 
     // Stats
