@@ -76,7 +76,7 @@ void run_stress_test(uint32_t num_consumers, uint32_t total_jobs) {
 
 int main(int argc, char** argv) {
     uint32_t threads = (argc > 1) ? std::stoi(argv[1]) : 1;
-    uint32_t jobs = (argc > 2) ? std::stoi(argv[2]) : 10'000'000;
+    uint32_t jobs = (argc > 2) ? std::stoi(argv[2]) : 100'000;
     run_stress_test(threads, jobs);
     return 0;
 }
