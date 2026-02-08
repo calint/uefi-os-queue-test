@@ -119,23 +119,25 @@ template <u32 QueueSize = 256> class Jobs final {
     //   true if job was run
     //   false if no job was run
     auto run_next() -> bool {
+        // optimistic read; job data visible at (4), claimed at (7)
+        auto t = atomic::load_relaxed(&tail_);
         while (true) {
-            // optimistic read; job data visible at (4), claimed at (7)
-            auto t = atomic::load_relaxed(&tail_);
             auto& entry = queue_[t % QueueSize];
 
             // (4) paired with release (3)
             auto seq = atomic::load_acquire(&entry.sequence);
             if (seq != t + 1) {
-                // note: ABA issue when another thread claimed and finished the
-                //       job before this thread checks
+                // note: ABA issue might have happened where a competing thread
+                //       claimed, and completed a job; in use case this is
+                //       highly unlikely and ok since the core will issue a
+                //       pause and `run_next` again
                 return false;
             }
 
             // definitive acquire of job data before execution
             // note: `weak` (true) because failure is retried in this loop
             // (7) atomically claims this job from competing consumers
-            if (atomic::compare_exchange_acquire_relaxed(&tail_, t, t + 1,
+            if (atomic::compare_exchange_acquire_relaxed(&tail_, &t, t + 1,
                                                          true)) {
                 entry.func(entry.data);
 
@@ -148,6 +150,10 @@ template <u32 QueueSize = 256> class Jobs final {
                 atomic::add_release(&completed_, 1u);
                 return true;
             }
+
+            // job was taken by competing core or spurious fail happened, try
+            // again without pause
+            // note: `t` is now the value of what `tail_` was at compare
         }
     }
 

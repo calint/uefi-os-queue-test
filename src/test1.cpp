@@ -13,7 +13,7 @@ struct WorkJob {
     void run() {
         // Simulate "heavy" arithmetic intensity
         uint64_t val = payload;
-        for (int i = 0; i < 10'000'000; ++i) {
+        for (int i = 0; i < 1'000'000; ++i) {
             val = ((val << 5) + val) + i; // simple hash-like work
         }
     }
