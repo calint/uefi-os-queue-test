@@ -1,8 +1,7 @@
 #pragma once
 
 #include "atomic.hpp"
-#include "cpu.hpp"
-#include "types.hpp"
+#include "kernel.hpp"
 
 namespace osca {
 
@@ -37,7 +36,7 @@ template <u32 QueueSize = 256> class Jobs final {
     using Func = auto (*)(void*) -> void;
 
     static auto constexpr JOB_SIZE =
-        cpu::CACHE_LINE_SIZE - sizeof(Func) - 2 * sizeof(u32);
+        kernel::core::CACHE_LINE_SIZE - sizeof(Func) - 2 * sizeof(u32);
 
     struct Entry {
         u8 data[JOB_SIZE];
@@ -46,36 +45,33 @@ template <u32 QueueSize = 256> class Jobs final {
         [[maybe_unused]] u32 padding;
     };
 
-    static_assert(sizeof(Entry) == cpu::CACHE_LINE_SIZE);
+    static_assert(sizeof(Entry) == kernel::core::CACHE_LINE_SIZE);
 
     // note: different cache lines avoiding false sharing
 
     // job storage:
     // * single producer writes
     // * multiple consumers read only after claiming via tail
-    alignas(cpu::CACHE_LINE_SIZE) Entry queue_[QueueSize];
+    alignas(kernel::core::CACHE_LINE_SIZE) Entry queue_[QueueSize];
 
     // read and written by producer
-    alignas(cpu::CACHE_LINE_SIZE) u32 head_;
+    alignas(kernel::core::CACHE_LINE_SIZE) u32 head_;
 
     // modified atomically by consumers
-    alignas(cpu::CACHE_LINE_SIZE) u32 tail_;
-
-    // written by producer
-    alignas(cpu::CACHE_LINE_SIZE) u32 submitted_;
+    alignas(kernel::core::CACHE_LINE_SIZE) u32 tail_;
 
     // read by producer written by consumers
-    alignas(cpu::CACHE_LINE_SIZE) u32 completed_;
+    alignas(kernel::core::CACHE_LINE_SIZE) u32 completed_;
 
     // make sure `completed_` is alone on cache line
-    [[maybe_unused]] u8 padding[cpu::CACHE_LINE_SIZE - sizeof(completed_)];
+    [[maybe_unused]] u8
+        padding[kernel::core::CACHE_LINE_SIZE - sizeof(completed_)];
 
   public:
     // safe to run while threads are running attempting `run_next`
     auto init() -> void {
         head_ = 0;
         tail_ = 0;
-        submitted_ = 0;
         completed_ = 0;
         for (auto i = 0u; i < QueueSize; ++i) {
             queue_[i].sequence = i;
@@ -101,7 +97,6 @@ template <u32 QueueSize = 256> class Jobs final {
         // prepare slot
         entry.func = [](void* data) { ptr<T>(data)->run(); };
         *ptr<T>(entry.data) = {args...};
-        ++submitted_;
         ++head_;
 
         // hand over the slot to be run
@@ -115,14 +110,14 @@ template <u32 QueueSize = 256> class Jobs final {
     // blocks while queue is full
     template <is_job T, typename... Args> auto add(Args&&... args) -> void {
         while (!try_add<T>(args...)) {
-            cpu::pause();
+            kernel::core::pause();
         }
     }
 
     // called from multiple consumers
     // returns:
     //   true if job was run
-    //   false if queue was empty or next job is not ready
+    //   false if no job was run
     auto run_next() -> bool {
         while (true) {
             // optimistic read; job data visible at (4), claimed at (7)
@@ -132,7 +127,8 @@ template <u32 QueueSize = 256> class Jobs final {
             // (4) paired with release (3)
             auto seq = atomic::load_acquire(&entry.sequence);
             if (seq != t + 1) {
-                // slot is not ready to run or queue is empty
+                // note: ABA issue when another thread claimed and finished the
+                //       job before this thread checks
                 return false;
             }
 
@@ -158,22 +154,18 @@ template <u32 QueueSize = 256> class Jobs final {
     // called from producer
     // intended to be used in status displays etc
     auto active_count() const -> u32 {
-        return submitted_ - atomic::load_relaxed(&completed_);
+        return head_ - atomic::load_relaxed(&completed_);
     }
 
     // called from producer
     // spin until all work is finished
     auto wait_idle() const -> void {
-        while (true) {
-            // note: since this is the producer, `submitted_` won't increase
-            // while in this loop
+        // note: since this is the producer, `head_` will not change while in
+        // this loop
 
-            // (6) paired with release (5)
-            auto completed = atomic::load_acquire(&completed_);
-            if (submitted_ - completed == 0) {
-                break;
-            }
-            cpu::pause();
+        // (6) paired with release (5)
+        while (head_ != atomic::load_acquire(&completed_)) {
+            kernel::core::pause();
         }
     }
 };
