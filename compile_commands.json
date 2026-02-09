@@ -4,12 +4,11 @@
     "arguments": [
       "clang++",
       "-std=c++26",
-      "-O3",
-      "src/test1.cpp",
       "-o",
-      "test1"
+      "test1",
+      "src/test1.cpp"
     ],
-    "directory": "/home/c/w/osca-queue-test",
+    "directory": "/home/c/w/uefi-os-queue-test",
     "output": "test1"
   }
 ]

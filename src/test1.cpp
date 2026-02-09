@@ -63,6 +63,8 @@ void run_stress_test(uint32_t num_consumers, uint32_t total_jobs) {
     std::cout << "Elapsed Time: " << diff.count() << " s" << std::endl;
     std::cout << "Throughput:   " << m_jobs_per_sec << " Million Jobs/sec"
               << std::endl;
+    std::cout << "Jobs done:    " << jobs_completed << std::endl;
+    std::cout << "CAS failures: " << cas_failures << std::endl;
 }
 
 int main(int argc, char** argv) {

@@ -2,6 +2,10 @@
 
 #include "atomic.hpp"
 #include "kernel.hpp"
+#include "types.hpp"
+
+inline u32 jobs_completed;
+inline u32 cas_failures;
 
 namespace osca {
 
@@ -68,7 +72,8 @@ template <u32 QueueSize = 256> class Jobs final {
         padding[kernel::core::CACHE_LINE_SIZE - sizeof(completed_)];
 
   public:
-    // safe to run while threads are running attempting `run_next`
+    // safe to run while threads are running attempting `run_next` if assumed
+    // zero initialized in data section
     auto init() -> void {
         head_ = 0;
         tail_ = 0;
@@ -95,8 +100,8 @@ template <u32 QueueSize = 256> class Jobs final {
         }
 
         // prepare slot
+        new (entry.data) T{fwd<Args>(args)...};
         entry.func = [](void* data) { ptr<T>(data)->run(); };
-        *ptr<T>(entry.data) = {args...};
         ++head_;
 
         // hand over the slot to be run
@@ -140,6 +145,7 @@ template <u32 QueueSize = 256> class Jobs final {
             if (atomic::compare_exchange_acquire_relaxed(&tail_, &t, t + 1,
                                                          true)) {
                 entry.func(entry.data);
+                atomic::add_relaxed(&jobs_completed, 1u);
 
                 // hand the slot back to the producer for the next lap
                 // (2) paired with acquire (1)
@@ -150,6 +156,7 @@ template <u32 QueueSize = 256> class Jobs final {
                 atomic::add_release(&completed_, 1u);
                 return true;
             }
+            atomic::add_relaxed(&cas_failures, 1u);
 
             // job was taken by competing core or spurious fail happened, try
             // again without pause
