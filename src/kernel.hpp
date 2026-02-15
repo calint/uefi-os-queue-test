@@ -11,7 +11,7 @@ struct FrameBuffer {
     u32 stride;
 };
 
-extern FrameBuffer frame_buffer;
+FrameBuffer inline frame_buffer;
 
 struct MemoryMap {
     void* buffer;
@@ -20,45 +20,47 @@ struct MemoryMap {
     u32 descriptor_version;
 };
 
-extern MemoryMap memory_map;
+MemoryMap inline memory_map;
 
 struct KeyboardConfig {
     u32 gsi;
     u32 flags;
 };
 
-extern KeyboardConfig keyboard_config;
+KeyboardConfig inline keyboard_config;
 
 struct Apic {
     u32 volatile* io;
     u32 volatile* local;
 };
 
-extern Apic apic;
+Apic inline apic;
 
 struct Core {
     u8 apic_id;
 };
 
-extern Core cores[];
-extern u8 core_count;
+Core inline cores[256];
+u8 inline core_count;
 
 struct Heap {
     void* start;
     u64 size;
 };
 
-extern Heap heap;
+Heap inline heap;
 
-auto inline outb(u16 port, u8 val) -> void {
+auto inline outb(u16 const port, u8 const val) -> void {
     asm volatile("outb %0, %1" : : "a"(val), "Nd"(port));
 }
 
-auto inline inb(u16 port) -> u8 {
+auto inline inb(u16 const port) -> u8 {
     u8 result;
     asm volatile("inb %1, %0" : "=a"(result) : "Nd"(port));
     return result;
 }
+
+auto allocate_pages(u64 num_pages) -> void*;
 
 [[noreturn]] auto start() -> void;
 
@@ -68,18 +70,29 @@ namespace kernel::serial {
 
 auto inline print(char const* s) -> void {
     while (*s) {
-        outb(0x3f8, u8(*s++));
+        outb(0x3f8, u8(*s));
+        ++s;
     }
 }
 
-auto inline print_hex(u64 val) -> void {
-    u8 constexpr hex_chars[] = "0123456789ABCDEF";
-    for (auto i = 60; i >= 0; i -= 4) {
-        outb(0x3f8, hex_chars[(val >> i) & 0xf]);
-        if (i != 0 && (i % 16 == 0)) {
-            outb(0x3f8, '_');
-        }
-    }
+auto inline print_hex_byte(u8 const val) -> void {
+    u8 constexpr static hex_chars[] = "0123456789ABCDEF";
+    outb(0x3f8, hex_chars[val >> 4]);
+    outb(0x3f8, hex_chars[val & 0xf]);
+}
+
+auto inline print_hex(u64 const val) -> void {
+    print_hex_byte(u8(val >> 56));
+    print_hex_byte(u8(val >> 48));
+    outb(0x3f8, '_');
+    print_hex_byte(u8(val >> 40));
+    print_hex_byte(u8(val >> 32));
+    outb(0x3f8, '_');
+    print_hex_byte(u8(val >> 24));
+    print_hex_byte(u8(val >> 16));
+    outb(0x3f8, '_');
+    print_hex_byte(u8(val >> 8));
+    print_hex_byte(u8(val));
 }
 
 auto inline print_dec(u64 val) -> void {
@@ -90,7 +103,7 @@ auto inline print_dec(u64 val) -> void {
     }
 
     // u64 max is 20 digits
-    u8 buffer[21];
+    u8 buffer[20];
     auto i = 0u;
 
     // extract digits in reverse order
@@ -100,17 +113,10 @@ auto inline print_dec(u64 val) -> void {
         ++i;
     }
 
-    // print the buffer backwards to show digits in correct order
+    // print the buffer backwards
     while (i > 0) {
         --i;
         outb(0x3f8, buffer[i]);
-    }
-}
-
-auto inline print_hex_byte(u8 val) -> void {
-    u8 constexpr hex_chars[] = "0123456789ABCDEF";
-    for (auto i = 4; i >= 0; i -= 4) {
-        outb(0x3f8, hex_chars[(val >> i) & 0xf]);
     }
 }
 
@@ -128,6 +134,30 @@ auto inline halt() -> void { asm volatile("hlt"); }
 
 } // namespace kernel::core
 
+namespace kernel {
+
+[[noreturn]] auto inline panic(u32 const color) -> void {
+    for (auto i = 0u; i < frame_buffer.stride * frame_buffer.height; ++i) {
+        frame_buffer.pixels[i] = color;
+    }
+
+    // infinite loop so the hardware doesn't reboot
+    core::interrupts_disable();
+    while (true) {
+        core::halt();
+    }
+}
+
+} // namespace kernel
+
+// kernel callback assembler functions
+extern "C" auto kernel_asm_timer_handler() -> void;
+extern "C" auto kernel_asm_keyboard_handler() -> void;
+
+// kernel callback from assembler
+extern "C" auto kernel_on_timer() -> void;
+extern "C" auto kernel_on_keyboard() -> void;
+
 // binding to osca
 namespace osca {
 
@@ -138,17 +168,21 @@ auto on_timer() -> void;
 
 } // namespace osca
 
+// required by msvc/clang abi when floating-point arithmetic is used
+extern "C" i32 _fltused;
+
 //
 // built-in replacements
 //
 
-extern "C" auto inline memset(void* s, i32 c, u64 n) -> void* {
+extern "C" auto inline memset(void* s, i32 const c, u64 n) -> void* {
     void* original_s = s;
     asm volatile("rep stosb" : "+D"(s), "+c"(n) : "a"(u8(c)) : "memory");
     return original_s;
 }
 
 extern "C" auto inline memcpy(void* dest, void const* src, u64 count) -> void* {
+
     void* original_dest = dest;
     asm volatile("rep movsb" : "+D"(dest), "+S"(src), "+c"(count) : : "memory");
     return original_dest;
