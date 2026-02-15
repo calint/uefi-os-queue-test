@@ -55,15 +55,13 @@ void run_stress_test(uint32_t num_producers, uint32_t num_consumers,
         c.request_stop();
 
     std::chrono::duration<double> diff = end_time - start_time;
-    double m_jobs_per_sec = (total_jobs / diff.count());
 
     std::cout << "Results for " << num_producers << "P / " << num_consumers
               << "C:\n";
-    std::cout << "      Jobs:   " << total_jobs << std::endl;
     std::cout << "      Time: " << diff.count() << " s" << std::endl;
     std::cout << "Throughput: " << (total_jobs / diff.count()) << " jobs/sec\n";
     std::cout << "  Verified: " << completed_jobs.load() << " / " << total_jobs
-              << "\n";
+              << "\n\n";
 }
 
 int main(int argc, char* argv[]) {
