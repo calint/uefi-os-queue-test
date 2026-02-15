@@ -8,7 +8,7 @@
 
 #include "test.hpp"
 
-void run_stress_test(uint32_t num_consumers, uint32_t total_jobs) {
+void run_test(uint32_t num_consumers, uint32_t total_jobs) {
     std::atomic<uint64_t> completed_jobs{0};
 
     // start consumers
@@ -55,5 +55,5 @@ int main(int argc, char** argv) {
 
     osca::jobs.init();
 
-    run_stress_test(consumers, jobs);
+    run_test(consumers, jobs);
 }
