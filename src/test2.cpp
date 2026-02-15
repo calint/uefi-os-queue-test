@@ -15,13 +15,13 @@ void run_stress_test(uint32_t num_producers, uint32_t num_consumers,
 
     auto start = std::chrono::high_resolution_clock::now();
 
-    // 2. Launch Consumers
+    // launch consumers
     std::vector<std::jthread> consumers;
-    for (uint32_t i = 0; i < num_consumers; ++i) {
+    for (auto i = 0u; i < num_consumers; ++i) {
         consumers.emplace_back([&](std::stop_token st) {
             while (!st.stop_requested()) {
                 if (!osca::jobs.run_next()) {
-                    kernel::core::pause(); // Avoid burning CPU if empty
+                    kernel::core::pause();
                 }
             }
         });
@@ -29,13 +29,12 @@ void run_stress_test(uint32_t num_producers, uint32_t num_consumers,
 
     auto start_time = std::chrono::high_resolution_clock::now();
 
-    // 3. Launch Producers
+    // launch producers
     std::vector<std::jthread> producers;
-    uint32_t jobs_per_producer = total_jobs / num_producers;
-    for (uint32_t i = 0; i < num_producers; ++i) {
+    auto jobs_per_producer = total_jobs / num_producers;
+    for (auto i = 0u; i < num_producers; ++i) {
         producers.emplace_back([&] {
-            for (uint32_t j = 0; j < jobs_per_producer; ++j) {
-                // Use C++26 standard keywords for logic as requested
+            for (auto j = 0u; j < jobs_per_producer; ++j) {
                 while (!osca::jobs.try_add<Job>(j, &completed_jobs)) {
                     kernel::core::pause();
                 }
@@ -43,7 +42,7 @@ void run_stress_test(uint32_t num_producers, uint32_t num_consumers,
         });
     }
 
-    // 4. Wait for all work to finish
+    // wait for all work to finish
     for (auto& p : producers)
         p.join();
 

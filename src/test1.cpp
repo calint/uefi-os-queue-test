@@ -11,9 +11,9 @@
 void run_stress_test(uint32_t num_consumers, uint32_t total_jobs) {
     std::atomic<uint64_t> completed_jobs{0};
 
-    // 1. Start Consumers
+    // start consumers
     std::vector<std::jthread> consumers;
-    for (uint32_t i = 0; i < num_consumers; ++i) {
+    for (auto i = 0u; i < num_consumers; ++i) {
         consumers.emplace_back([](std::stop_token stoken) {
             while (!stoken.stop_requested()) {
                 if (!osca::jobs.run_next()) {
@@ -25,23 +25,19 @@ void run_stress_test(uint32_t num_consumers, uint32_t total_jobs) {
 
     auto start_time = std::chrono::high_resolution_clock::now();
 
-    // 2. Producer: Flood the queue
-    for (uint32_t i = 0; i < total_jobs; ++i) {
-        // Uses the blocking add() to wait if queue is full
+    // producer: flood the queue
+    for (auto i = 0u; i < total_jobs; ++i) {
         osca::jobs.add<Job>(uint64_t(i), &completed_jobs);
     }
 
-    // 3. Synchronization Point
     osca::jobs.wait_idle();
 
     auto end_time = std::chrono::high_resolution_clock::now();
 
-    // 4. Join threads to verify termination
     for (auto& t : consumers) {
         t.request_stop();
     }
 
-    // Stats
     std::chrono::duration<double> diff = end_time - start_time;
 
     std::cout << "Results for 1P / " << num_consumers << "C:\n";
