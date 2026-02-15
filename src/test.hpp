@@ -3,10 +3,9 @@
 #include <atomic>
 #include <cstdint>
 
-auto constexpr iterations = 1'000'000u;
-
 struct Job {
     uint64_t payload;
+    uint64_t iterations;
     std::atomic<uint64_t>* counter;
 
     void run() {

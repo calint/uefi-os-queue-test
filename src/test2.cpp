@@ -8,17 +8,17 @@
 
 #include "test.hpp"
 
-void run_test(uint32_t num_producers, uint32_t num_consumers,
-              uint32_t total_jobs) {
+void run_test(uint32_t producers, uint32_t consumers, uint32_t jobs,
+              uint64_t job_work) {
 
     std::atomic<uint64_t> completed_jobs{0};
 
     auto start = std::chrono::high_resolution_clock::now();
 
     // launch consumers
-    std::vector<std::jthread> consumers;
-    for (auto i = 0u; i < num_consumers; ++i) {
-        consumers.emplace_back([&](std::stop_token st) {
+    std::vector<std::jthread> consumer_threads;
+    for (auto i = 0u; i < consumers; ++i) {
+        consumer_threads.emplace_back([&](std::stop_token st) {
             while (!st.stop_requested()) {
                 if (!osca::jobs.run_next()) {
                     kernel::core::pause();
@@ -30,12 +30,12 @@ void run_test(uint32_t num_producers, uint32_t num_consumers,
     auto start_time = std::chrono::high_resolution_clock::now();
 
     // launch producers
-    std::vector<std::jthread> producers;
-    auto jobs_per_producer = total_jobs / num_producers;
-    for (auto i = 0u; i < num_producers; ++i) {
-        producers.emplace_back([&] {
+    std::vector<std::jthread> producer_threads;
+    auto jobs_per_producer = jobs / producers;
+    for (auto i = 0u; i < producers; ++i) {
+        producer_threads.emplace_back([&] {
             for (auto j = 0u; j < jobs_per_producer; ++j) {
-                while (!osca::jobs.try_add<Job>(j, &completed_jobs)) {
+                while (!osca::jobs.try_add<Job>(j, job_work, &completed_jobs)) {
                     kernel::core::pause();
                 }
             }
@@ -43,23 +43,22 @@ void run_test(uint32_t num_producers, uint32_t num_consumers,
     }
 
     // wait for all work to finish
-    for (auto& p : producers)
+    for (auto& p : producer_threads)
         p.join();
 
     osca::jobs.wait_idle();
 
     auto end_time = std::chrono::high_resolution_clock::now();
 
-    for (auto& c : consumers)
+    for (auto& c : consumer_threads)
         c.request_stop();
 
     std::chrono::duration<double> diff = end_time - start_time;
 
-    std::cout << "Results for " << num_producers << "P / " << num_consumers
-              << "C:\n";
+    std::cout << "Results for " << producers << "P / " << consumers << "C:\n";
     std::cout << "      Time: " << diff.count() << " s" << std::endl;
-    std::cout << "Throughput: " << (total_jobs / diff.count()) << " jobs/sec\n";
-    std::cout << "  Verified: " << completed_jobs.load() << " / " << total_jobs
+    std::cout << "Throughput: " << (jobs / diff.count()) << " jobs/sec\n";
+    std::cout << "  Verified: " << completed_jobs.load() << " / " << jobs
               << "\n\n";
 }
 
@@ -67,11 +66,14 @@ int main(int argc, char* argv[]) {
     uint32_t producers = (argc > 1) ? std::stoi(argv[1]) : 1;
     uint32_t consumers = (argc > 2) ? std::stoi(argv[2]) : 1;
     uint32_t jobs = (argc > 3) ? std::stoi(argv[3]) : 10'000;
+    uint32_t job_work = (argc > 4) ? std::stoi(argv[4]) : 1'000'000;
+
     std::cout << "Producers: " << producers << "\n";
     std::cout << "Consumers: " << consumers << "\n";
-    std::cout << "     Jobs: " << jobs << "\n\n";
+    std::cout << "     Jobs: " << jobs << "\n";
+    std::cout << " Job work: " << job_work << "\n\n";
 
     osca::jobs.init();
 
-    run_test(producers, consumers, jobs);
+    run_test(producers, consumers, jobs, job_work);
 }
